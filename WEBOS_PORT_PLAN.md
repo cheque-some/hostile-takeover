@@ -249,7 +249,7 @@ Model on `game/sdl/linux/hosthelpers.cpp`. webOS-specific paths:
 
 | Method | webOS path |
 |---|---|
-| `GetMainDataDir` | `/media/internal/.HostileTakeover/` or the app's data dir under `/var/luna/data/` |
+| `GetMainDataDir` | `/media/internal/.HostileTakeover/` or the app's data dir under `/var/luna/data/com.spiffcode.hostiletakeover/` |
 | `GetSaveGamesDir` | `${MainDataDir}/SaveGames/` |
 | `GetPrefsFilename` | `${MainDataDir}/prefs.bin` |
 | `GetTempDir` | `/tmp/` |
@@ -259,7 +259,7 @@ Model on `game/sdl/linux/hosthelpers.cpp`. webOS-specific paths:
 | `GetPlatformString` | `"webos-touchpad"` |
 | `GetChatController` | `NULL` (multiplayer off) |
 
-The bundled `htdata832.pdb` ships **inside the .ipk** at a known install path (e.g. `/media/cryptofs/apps/usr/palm/applications/com.example.hostiletakeover/htdata832.pdb`). On first launch, `HostHelpers::Init` copies it to `GetMainDataDir()` if not already there — matching the Android lifecycle.
+The bundled `htdata832.pdb` ships **inside the .ipk** at a known install path (`/media/cryptofs/apps/usr/palm/applications/com.spiffcode.hostiletakeover/htdata832.pdb`). On first launch, `HostHelpers::Init` copies it to `GetMainDataDir()` if not already there — matching the Android lifecycle.
 
 #### 5.2 `GetSurfaceProperties`
 Return `cxWidth = 800, cyHeight = 600` (matches the internal render resolution, option B). `density = 1.0`. Pixel format flags: match what `Display::Init` settled on.
@@ -302,7 +302,7 @@ On `kidmAppKillFocus`: trigger an autosave to `${SaveGamesDir}/htsave_autosuspen
 #### 7.1 `game/sdl/webos/package/appinfo.json`
 ```json
 {
-  "id": "com.example.hostiletakeover",
+  "id": "com.spiffcode.hostiletakeover",
   "version": "1.0.0",
   "vendor": "Hostile Takeover Community",
   "type": "pdk",
@@ -338,7 +338,7 @@ rm -rf "$STAGE"
 
 #### 7.4 Install
 ```
-palm-install com.example.hostiletakeover_1.0.0_all.ipk
+palm-install com.spiffcode.hostiletakeover_1.0.0_all.ipk
 ```
 
 #### 7.5 Community catalog submission
@@ -443,8 +443,10 @@ Claude Code must explicitly confirm each acceptance before moving on:
 
 The following are decisions Claude Code should **ask** the user about rather than guess:
 
-1. **App ID**: `com.example.hostiletakeover` is a placeholder. Real submission to webOS Ports needs a stable, owned reverse-DNS ID. Confirm before Phase 7.
-2. **Icon**: `package/icon.png` — does the user have official 64×64 art, or should Claude Code reuse `assets/iphone_icon.psd` flattened?
-3. **PDK location**: Path to the installed PDK on the dev machine. Affects the makefile's `PDK` variable.
-4. **Resolution decision**: After Phase 2 works, run option B and decide whether to attempt option A (native 1024×768) in a follow-up.
-5. **Single-player only forever, or eventually re-enable MP?** If the latter, Phase 1's file-exclusion approach is correct (reversible). If never, the multiplayer files can be deleted in a cleanup pass after Phase 7.
+1. **Icon**: `package/icon.png` — does the user have official 64×64 art, or should Claude Code reuse `assets/iphone_icon.psd` flattened?
+2. **PDK location**: Path to the installed PDK on the dev machine. Affects the makefile's `PDK` variable.
+3. **Resolution decision**: After Phase 2 works, run option B and decide whether to attempt option A (native 1024×768) in a follow-up.
+4. **Single-player only forever, or eventually re-enable MP?** If the latter, Phase 1's file-exclusion approach is correct (reversible). If never, the multiplayer files can be deleted in a cleanup pass after Phase 7.
+
+**Resolved decisions:**
+- **App ID**: `com.spiffcode.hostiletakeover`. The original codebase is by Spiffcode, Inc. and is BSD-licensed; this is a port of their release, not a fork claiming to be a different product.
