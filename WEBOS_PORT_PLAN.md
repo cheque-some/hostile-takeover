@@ -304,7 +304,7 @@ On `kidmAppKillFocus`: trigger an autosave to `${SaveGamesDir}/htsave_autosuspen
 {
   "id": "com.spiffcode.hostiletakeover",
   "version": "1.0.0",
-  "vendor": "Hostile Takeover Community",
+  "vendor": "Hostile Takeover Community Port",
   "type": "pdk",
   "main": "HostileTakeover",
   "title": "Hostile Takeover",
@@ -323,6 +323,11 @@ hostiletakeover-pkg/
 ├── htdata832.pdb              # game data
 └── htsfx.pdb                  # sound data
 ```
+
+#### 7.2.1 Icon
+Flatten `assets/iphone_icon.psd` → 64×64 PNG → `game/sdl/webos/package/icon.png`. The PSD is part of the BSD-licensed repo so reuse is permitted; trademarks are technically separate from copyright but enforcement risk on a non-commercial port of a discontinued product is nil. The `appinfo.json` `vendor` field is set to `"Hostile Takeover Community Port"` (not `"Spiffcode, Inc."`) so the brand origin stays honest while the app name and icon remain continuous with the original.
+
+`game/sdl/webos/README.md` must include an attribution block crediting Spiffcode, Inc. and linking to the upstream BSD release. This is good citizenship and matches the spirit of BSD attribution.
 
 #### 7.3 `package/package.sh`
 ```bash
@@ -443,10 +448,10 @@ Claude Code must explicitly confirm each acceptance before moving on:
 
 The following are decisions Claude Code should **ask** the user about rather than guess:
 
-1. **Icon**: `package/icon.png` — does the user have official 64×64 art, or should Claude Code reuse `assets/iphone_icon.psd` flattened?
-2. **PDK location**: Path to the installed PDK on the dev machine. Affects the makefile's `PDK` variable.
-3. **Resolution decision**: After Phase 2 works, run option B and decide whether to attempt option A (native 1024×768) in a follow-up.
-4. **Single-player only forever, or eventually re-enable MP?** If the latter, Phase 1's file-exclusion approach is correct (reversible). If never, the multiplayer files can be deleted in a cleanup pass after Phase 7.
+1. **PDK location**: Path to the installed PDK on the dev machine. Affects the makefile's `PDK` variable.
+2. **Resolution decision**: After Phase 2 works, run option B and decide whether to attempt option A (native 1024×768) in a follow-up.
+3. **Single-player only forever, or eventually re-enable MP?** If the latter, Phase 1's file-exclusion approach is correct (reversible). If never, the multiplayer files can be deleted in a cleanup pass after Phase 7.
 
 **Resolved decisions:**
 - **App ID**: `com.spiffcode.hostiletakeover`. The original codebase is by Spiffcode, Inc. and is BSD-licensed; this is a port of their release, not a fork claiming to be a different product.
+- **Icon**: flatten `assets/iphone_icon.psd` → 64×64 PNG. BSD covers reuse; vendor field in `appinfo.json` is `"Hostile Takeover Community Port"` to keep brand origin honest, and `README.md` must include an attribution block crediting Spiffcode.
