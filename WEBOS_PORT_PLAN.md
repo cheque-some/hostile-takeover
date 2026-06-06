@@ -69,7 +69,51 @@ This is cleaner than scattering ifdefs and leaves the multiplayer codepath salva
 
 ---
 
-## 4. Directory Layout
+## 4. Development Environment
+
+Recommended setup is **Windows host + native HP webOS PDK + VirtualBox webOS TouchPad emulator**, but the port is buildable on macOS or Linux hosts with equivalent steps (the PDK is officially supported on all three). The emulator is the workhorse — Phase 1–7 acceptance gates are all exercisable in-VM, so **a physical HP TouchPad is not required until final validation**.
+
+### 4.1 Host setup
+1. Install the HP webOS SDK + PDK. The SDK includes the VirtualBox emulator + a webOS 3.0 TouchPad image (1024×768, x86); the PDK includes the ARM cross-compiler, `palm-package`, `palm-install`, and `novacom`. Original HP mirrors are dead — pull from `web.archive.org` or the webOS Internals / openwebos community archives.
+2. Install VirtualBox separately if not bundled.
+3. Confirm the toolchain: `arm-none-linux-gnueabi-g++ --version` resolves.
+4. Confirm the emulator launches: SDK launcher GUI (Windows) or `palm-emulator` (Linux/macOS). The TouchPad image should appear in the device dropdown.
+5. (Optional) If targeting a physical TouchPad: enable Developer Mode on the device, connect over USB, confirm `novacom -l` lists it.
+
+**Windows-specific note:** the PDK installer is a 2011-era package and may need SmartScreen acknowledgment to run. The native Windows tools (`palm-package.exe`, `novacom.exe`) talk to USB devices directly — **do not** try to run the toolchain inside WSL2 and reach a USB-attached TouchPad through `usbipd-win`; it's fragile and unnecessary.
+
+### 4.2 Dual build target (emulator vs device)
+The makefile in `game/sdl/webos/` produces two binary variants from the same sources:
+
+| Target | Compiler | Sysroot | Output |
+|---|---|---|---|
+| `emulator` (default) | host x86 GCC from PDK | x86 webOS sysroot | `webos-build/emulator/HostileTakeover` |
+| `device` | `arm-none-linux-gnueabi-` cross-compiler | ARM webOS sysroot | `webos-build/device/HostileTakeover` |
+
+Selected via `make TARGET=emulator` or `make TARGET=device`. Same `-DNO_MULTIPLAYER -D__WEBOS__` defines for both. Default is `emulator` for fast iteration. The packaging script (`package/package.sh`) accepts `--target` and produces appropriately-named `.ipk` files.
+
+### 4.3 Install commands
+- **To emulator:** `palm-install -d emulator com.spiffcode.hostiletakeover_1.0.0_all.ipk`
+- **To device:** `palm-install com.spiffcode.hostiletakeover_1.0.0_all.ipk` (USB-connected TouchPad with developer mode on)
+
+`palm-install -d` lists available targets; without `-d` it defaults to the connected USB device.
+
+### 4.4 Where the emulator is not faithful
+The emulator covers the Phase 1–7 happy path, but a real TouchPad is worth having for:
+- **Phase 8 multi-touch.** Emulator PDL multi-touch behavior doesn't fully reflect a capacitive screen.
+- **Phase 4 audio under load.** Buffer-underrun characteristics differ between the VM audio backend and the device.
+- **Performance characterization.** x86 VM ≠ ARM Cortex-A9. Frame pacing, draw cost, and audio scheduling all behave differently.
+
+A community port shipped to Preware *without* a device validation pass is still legitimate — flag it in the README as "tested in emulator, please file device-specific issues."
+
+### 4.5 Web vs Desktop Claude Code
+- **Desktop is the right host.** VirtualBox and the PDK installer assume a real OS environment; the optional physical-device step needs USB. Both rule out web Claude Code for the implementation work.
+- **Web Claude Code is still useful** for code authoring, code review, codebase exploration, and answering architecture questions against the repo (like this current session). But every Phase 2+ acceptance gate requires running the binary, which requires the local emulator. **Don't attempt the implementation entirely in web sessions** — the test loop is the bottleneck.
+- **Practical handoff pattern:** web for plan refinement and one-off code authoring against the branch; desktop for the build-test-iterate loop. Git branch is the handoff point.
+
+---
+
+## 5. Directory Layout
 
 New code lives under `game/sdl/webos/`, mirroring the convention of `game/sdl/linux/` and `game/sdl/android/`:
 
@@ -96,36 +140,35 @@ Modified files (in-place, behind `__WEBOS__` or `NO_MULTIPLAYER` defines):
 
 ---
 
-## 5. Implementation Phases
+## 6. Implementation Phases
 
 ### Phase 0 — Toolchain setup (manual, no code)
-Done outside the repo; Claude Code records the steps in `game/sdl/webos/README.md`.
+Per §4 (Development Environment). Claude Code records the resolved local paths (PDK install dir, emulator name) in `game/sdl/webos/README.md` so the makefile and any helper scripts can reference them.
 
-1. Install HP webOS PDK 3.0.5 on a Linux dev box. Archive mirrors exist; the SDK installer drops a sysroot at `/opt/PalmPDK/` (or `~/PalmPDK/`).
-2. Confirm `arm-none-linux-gnueabi-gcc --version` resolves (PDK adds it to PATH via `pdk-env.sh`).
-3. Confirm SDL 1.2 headers + `libSDL.so` are present under `$PDK/device/lib/` and `$PDK/include/SDL/`.
-4. Confirm PDL headers + lib (`PDL.h`, `libpdl.so`).
-5. Install `novacom` + `palm-package` / `palm-install` host tools.
-
-**Acceptance:** `arm-none-linux-gnueabi-g++ -dumpmachine` prints `arm-none-linux-gnueabi`, and `pkg-config --cflags sdl` (or PDK equivalent) finds SDL 1.2.
+**Acceptance:**
+- `arm-none-linux-gnueabi-g++ -dumpmachine` prints `arm-none-linux-gnueabi`
+- SDL 1.2 + PDL headers locatable under the PDK install dir
+- VirtualBox emulator launches the TouchPad image and reaches the home screen
 
 ---
 
 ### Phase 1 — Build skeleton + multiplayer exclusion
 
-**Goal:** A webOS makefile that links against PDK SDL 1.2 and produces an `arm-none-linux-gnueabi` ELF — even if the ELF segfaults at runtime.
+**Goal:** A webOS makefile that links against PDK SDL 1.2 and produces a webOS ELF for both the emulator (x86) and device (ARM) targets — even if the ELFs segfault at runtime.
 
 #### 1.1 Create `game/sdl/webos/makefile`
-Model on `game/sdl/linux/makefile`. Key differences:
-- `CC := $(PDK_TOOLCHAIN)/arm-none-linux-gnueabi-gcc`
-- `CXX := $(PDK_TOOLCHAIN)/arm-none-linux-gnueabi-g++`
+Model on `game/sdl/linux/makefile`. Implements the dual-target setup from §4.2: `make TARGET=emulator` (default) → x86 host GCC + x86 webOS sysroot; `make TARGET=device` → ARM cross-compiler + ARM webOS sysroot. Same defines and source list for both. Key elements:
+
+- `TARGET ?= emulator`
+- For `emulator`: `CXX := g++` (host), include + lib paths point at the emulator sysroot.
+- For `device`: `CXX := $(PDK_TOOLCHAIN)/arm-none-linux-gnueabi-g++`, include + lib paths point at the device sysroot.
 - `CPPFLAGS += -D__LINUX__ -DSDL -DNO_MULTIPLAYER -D__WEBOS__ -DTRACKSTATE`
 - `CPPFLAGS += -I$(PDK)/include -I$(PDK)/include/SDL`
-- `LDFLAGS  += -L$(PDK)/device/lib -lSDL -lpdl -lpthread -lm`
+- `LDFLAGS  += -lSDL -lpdl -lpthread -lm`
 - **No** `-lcurl`.
 - C++ standard: `-std=c++0x` (matches Android NDK 4.8 build).
 - Drop ASan (`-fsanitize=address` is unavailable on PDK GCC 4.x).
-- Output: `webos-build/HostileTakeover`.
+- Output: `webos-build/$(TARGET)/HostileTakeover`.
 
 #### 1.2 Source-file exclusion
 In the makefile's source-discovery wildcards, **exclude**:
@@ -157,7 +200,10 @@ The exact list is **discovered iteratively** from linker errors. Claude Code's t
 #### 1.4 Strip multiplayer menu entries
 In `game/Shell.cpp` (and any `mainform.cpp` / similar), wrap menu entries that lead to `creategameform`/`chooseserverform`/`createroomform` in `#ifndef NO_MULTIPLAYER`. Goal: when the user reaches the main menu, "Multiplayer" is either hidden or grayed out — there is no codepath into the excluded forms.
 
-**Acceptance for Phase 1:** `make -C game/sdl/webos` produces an ELF binary. `file webos-build/HostileTakeover` reports `ELF 32-bit LSB executable, ARM, EABI5`. The binary need not run yet.
+**Acceptance for Phase 1:**
+- `make -C game/sdl/webos TARGET=emulator` produces `webos-build/emulator/HostileTakeover` (x86 ELF).
+- `make -C game/sdl/webos TARGET=device` produces `webos-build/device/HostileTakeover` (ARM ELF; `file` reports `ELF 32-bit LSB executable, ARM, EABI5`).
+- Neither binary need run yet.
 
 ---
 
@@ -371,7 +417,7 @@ Detect a stationary `penDownEvent` held >500ms; synthesize the game's "secondary
 
 ---
 
-## 6. File Manifest
+## 7. File Manifest
 
 ### New files
 - `game/sdl/webos/makefile`
@@ -400,7 +446,7 @@ Detect a stationary `penDownEvent` held >500ms; synthesize the game's "secondary
 
 ---
 
-## 7. Risk Register
+## 8. Risk Register
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
@@ -415,7 +461,7 @@ Detect a stationary `penDownEvent` held >500ms; synthesize the game's "secondary
 
 ---
 
-## 8. Per-Phase Acceptance Checklist
+## 9. Per-Phase Acceptance Checklist
 
 Claude Code must explicitly confirm each acceptance before moving on:
 
@@ -432,7 +478,7 @@ Claude Code must explicitly confirm each acceptance before moving on:
 
 ---
 
-## 9. What Claude Code Should NOT Do
+## 10. What Claude Code Should NOT Do
 
 - **Don't** edit gameplay code (anything under `game/*.cpp` other than `Shell.cpp` / form menu hookups) without explicit reason — the goal is a port, not a refactor.
 - **Don't** add `#ifdef __WEBOS__` outside the SDL platform layer + Shell menu. Per-platform branches in game logic are a smell here.
@@ -444,12 +490,12 @@ Claude Code must explicitly confirm each acceptance before moving on:
 
 ---
 
-## 10. Open Questions to Flag Back to User
+## 11. Open Questions to Flag Back to User
 
 The following are decisions Claude Code should **ask** the user about rather than guess:
 
-1. **PDK location**: Path to the installed PDK on the dev machine. Affects the makefile's `PDK` variable.
-2. **Resolution decision**: After Phase 2 works, run option B and decide whether to attempt option A (native 1024×768) in a follow-up.
+1. **Local PDK + emulator install paths** (per §4.1): once the user has the PDK and VirtualBox emulator installed, Claude Code needs the `PDK` install dir and the emulator's `palm-emulator` device name to bake into the makefile and helper scripts.
+2. **Resolution decision**: After Phase 2 works, run option B (letterboxed 800×600) and decide whether to attempt option A (native 1024×768) in a follow-up.
 3. **Single-player only forever, or eventually re-enable MP?** If the latter, Phase 1's file-exclusion approach is correct (reversible). If never, the multiplayer files can be deleted in a cleanup pass after Phase 7.
 
 **Resolved decisions:**
